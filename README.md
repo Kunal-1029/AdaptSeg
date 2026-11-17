@@ -1,4 +1,3 @@
-# AdaptSeg
 # AdaptSeg: Off-Road Semantic Scene Segmentation
 
 ## About the Project
