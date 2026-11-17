@@ -1,246 +1,320 @@
 # AdaptSeg
-<div align="center">
+# AdaptSeg: Off-Road Semantic Scene Segmentation
 
-# 🏜️ AdaptSeg
+## About the Project
 
-### Off-Road Semantic Scene Segmentation with a Frozen DINOv2 Backbone
+AdaptSeg is a deep learning-based project focused on understanding complex off-road environments through semantic segmentation. Unlike basic image classification, this project assigns a label to every pixel in an image, allowing the model to distinguish between terrain, vegetation, obstacles, and other elements present in outdoor scenes.
 
-![Python](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python&logoColor=white)
-![PyTorch](https://img.shields.io/badge/PyTorch-DL%20Framework-EE4C2C?logo=pytorch&logoColor=white)
-![Backbone](https://img.shields.io/badge/Backbone-DINOv2%20ViT--S%2F14-6f42c1)
-![Task](https://img.shields.io/badge/Task-Semantic%20Segmentation-success)
-![Platform](https://img.shields.io/badge/Platform-Kaggle%20GPU-20BEFF?logo=kaggle&logoColor=white)
+The goal of this project is to build an intelligent system capable of interpreting real-world environments, which can be applied in areas such as autonomous navigation, robotics, and off-road path analysis.
 
-*Pixel-level understanding of unstructured outdoor terrain, built as an individual project.*
-
-</div>
+What makes this project powerful is the use of a Vision Transformer (DINOv2) combined with a custom segmentation head, enabling both global understanding and efficient prediction.
 
 ---
 
-## 📌 Overview
+## How It Works
 
-**AdaptSeg** is a deep learning project that performs **semantic segmentation** on off-road scenes. Instead of assigning one label to a whole image, the model predicts a class for **every pixel**, separating terrain, vegetation, obstacles and other elements of an outdoor environment.
-
-This kind of scene understanding is a building block for:
-
-- 🚙 Autonomous off-road navigation
-- 🤖 Robotics and perception systems
-- 🗺️ Traversability and path analysis
-
-AdaptSeg pairs a **frozen Vision Transformer (DINOv2 ViT-S/14)** with a **lightweight CNN segmentation head**. The transformer provides strong global features, and only the small head is trained, which keeps training efficient.
-
----
-
-## 🧠 How It Works
+The model follows a simple but effective pipeline:
 
 ```
-Input Image ──▶ DINOv2 (frozen) ──▶ Feature Tokens ──▶ CNN Segmentation Head ──▶ Output Mask
+Input Image → DINOv2 Feature Extraction → Segmentation Head → Output Mask
 ```
 
-1. The image is resized and normalized.
-2. The frozen DINOv2 backbone extracts patch-level feature tokens.
-3. The CNN head converts the tokens into spatial feature maps.
-4. The output is upsampled to the input resolution to produce a per-pixel class prediction.
-
-### Architecture
-
-| Component | Details |
-|---|---|
-| **Backbone** | DINOv2 ViT-S/14, transformer-based, captures global image relationships, **frozen** during training |
-| **Head** | Lightweight CNN that turns feature tokens into spatial maps and pixel-wise class logits |
+Instead of directly learning from raw pixels, the model first extracts meaningful features using a transformer-based backbone and then converts those features into a segmentation map.
 
 ---
 
-## ⚙️ Training Setup
+## Model Architecture
+
+The system consists of two main components:
+
+**1. DINOv2 Backbone (ViT-S/14)**
+- A transformer-based architecture
+- Captures global relationships in images
+- Outputs feature tokens instead of convolution maps
+- Used in frozen mode to improve efficiency
+
+**2. Segmentation Head**
+- A lightweight CNN-based module
+- Converts transformer features into spatial feature maps
+- Produces pixel-wise class predictions
+
+Each image has a corresponding segmentation mask.
+
+---
+
+## Data Processing
+
+Before feeding images into the model:
+
+- Images are resized to **448 × 896**
+- Normalized using ImageNet statistics
+- Augmented using:
+  - Random Horizontal Flip
+  - Color Jitter
+
+### Mask Conversion
+
+Custom pixel values are mapped into class indices:
+
+```python
+value_map = {
+    0: 0, 100: 1, 200: 2, 300: 3, 500: 4,
+    550: 5, 700: 6, 800: 7, 7100: 8, 10000: 9
+}
+```
+
+This ensures consistency during training.
+
+---
+
+## Training Configuration
 
 | Parameter | Value |
 |---|---|
-| Input size | 448 × 896 |
-| Batch size | 16 |
-| Learning rate | 3e-4 |
+| Batch Size | 16 |
+| Learning Rate | 3e-4 |
 | Epochs | 15+ |
-| Optimizer | AdamW |
-| Classes | 10 |
-| Normalization | ImageNet mean / std |
-| Augmentation | Random horizontal flip, color jitter |
+| Image Size | 448 × 896 |
+| Number of Classes | 10 |
 
 ### Loss Function
+
+A combination of two loss functions is used:
 
 ```
 Total Loss = 0.5 × CrossEntropy + 0.5 × Dice Loss
 ```
 
-- **Cross-Entropy** drives correct per-pixel classification.
-- **Dice Loss** improves region overlap and helps with class imbalance.
+- Cross Entropy ensures correct classification
+- Dice Loss improves segmentation overlap
 
-### Mask Conversion
+### Optimization Strategy
 
-Raw mask pixel values are remapped to contiguous class indices before training:
+To improve performance, the following techniques were used:
 
-```python
-value_map = {0: 0, 100: 1, 200: 2, 300: 3, 500: 4, 550: 5, 700: 6, 800: 7, 7100: 8, 10000: 9}
-```
-
-The best checkpoint is selected automatically based on validation performance.
+- AdamW optimizer for better generalization
+- Frozen backbone to reduce computation
+- Efficient feature extraction using DINOv2
+- GPU-based training for speed
 
 ---
 
-## 📊 Evaluation
+## Training Process
 
-- **Pixel-level IoU** as a basic overlap measure.
-- **Class-wise mean IoU (mIoU)** as the primary, more reliable metric.
-- **Test-Time Augmentation (TTA):** predictions on the original and horizontally flipped image are averaged. The evaluation script also supports multi-scale inference.
+During training:
 
-### Results
+1. Images are passed through the DINOv2 backbone
+2. Feature tokens are extracted
+3. The segmentation head processes the features
+4. Output is resized to match original dimensions
+5. Loss is computed and backpropagated
+6. The best model is saved based on validation performance
+
+---
+
+## Evaluation & Metrics
+
+### IoU (Intersection over Union)
+
+IoU measures how well the predicted segmentation overlaps with the ground truth.
+
+Two approaches were used:
+
+- Basic IoU (pixel accuracy)
+- Class-wise mean IoU (more reliable metric)
+
+### Test Time Augmentation (TTA)
+
+To improve prediction accuracy:
+
+- The model runs on the original image
+- The model runs on the horizontally flipped image
+- The final output is the average of both predictions
+
+This helps reduce prediction errors.
+
+### Metrics
 
 | Split | IoU |
 |---|---|
 | Training | ~0.7+ |
-| Validation / Test | ~0.35 – 0.6 (varies with generalization) |
-
-> The gap between training and validation/test IoU shows room to improve generalization. See [Future Work](#-future-work).
+| Validation / Test | ~0.35 – 0.6 (depends on generalization) |
 
 ---
 
-## 🚧 Challenges & Solutions
+## Results
 
-| Challenge | Solution |
-|---|---|
-| High memory use from large input size | Frozen backbone, feature extraction instead of full fine-tuning |
-| Slow training with a transformer | Train only the lightweight head, GPU training |
-| Class imbalance | Combined Cross-Entropy + Dice loss |
-| Limited generalization | Data augmentation and flip TTA |
+- Model performance improved progressively during training
+- The best model is selected automatically
+- Final evaluation is based on the mean IoU score
 
 ---
 
-## 📁 Dataset Structure
+## Model Usage
 
-```
-Offroad_Segmentation_Training_Dataset/
-├── train/
-│   ├── Color_Images/
-│   └── Segmentation/
-└── val/
-    ├── Color_Images/
-    └── Segmentation/
+To load the trained model:
+
+```python
+model.load_state_dict(torch.load("best_model.pth"))
+model.eval()
 ```
 
-Each image in `Color_Images/` has a matching mask in `Segmentation/`.
+Inference includes:
+
+- Feature extraction
+- Segmentation prediction
+- Mask generation
 
 ---
 
-## 🚀 Getting Started
+## Dependencies
 
-### 1. Clone the repository
+Install the required libraries:
+
+```bash
+pip install torch torchvision timm opencv-python numpy tqdm pillow
+```
+
+---
+
+## Challenges Faced
+
+- High memory usage due to large image size
+- Long training time with a transformer-based architecture
+- Class imbalance in the dataset
+
+## Solutions Implemented
+
+- Used feature extraction instead of full fine-tuning
+- Combined Dice and Cross-Entropy loss
+- Applied data augmentation and TTA
+- Optimized the training pipeline
+
+---
+
+## Steps to Run the Project
+
+Follow the steps below to train, evaluate, and visualize the semantic segmentation model.
+
+### 1. Clone the Repository
 
 ```bash
 git clone <your-repo-link>
 cd <repo-folder>
 ```
 
-### 2. Install dependencies (Python 3.8+)
+### 2. Install Dependencies
+
+Make sure you have Python 3.8+ installed.
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Or manually:
+Or install manually:
 
 ```bash
-pip install torch torchvision timm opencv-python numpy tqdm pillow matplotlib
+pip install torch torchvision timm opencv-python tqdm numpy pillow matplotlib
 ```
 
-### 3. Set up the dataset
+### 3. Setup Dataset
 
-Place the dataset in the structure shown above and update the path in the script:
+Download the dataset and place it inside:
+
+```
+/kaggle/input/datasets/roheeeeet/rohit-xeno/
+```
+
+Ensure the folder structure is:
+
+```
+Offroad_Segmentation_Training_Dataset/
+│
+├── train/
+│   ├── Color_Images/
+│   └── Segmentation/
+│
+└── val/
+    ├── Color_Images/
+    └── Segmentation/
+```
+
+### 4. Configure Paths
+
+Update the dataset path in the script:
 
 ```python
 DATA_DIR = "/kaggle/input/datasets/roheeeeet/rohit-xeno"
 ```
 
-### 4. Train
+### 5. Train the Model
+
+Run the training script:
 
 ```bash
 python train.py
 ```
 
-Or run all training cells in a Kaggle notebook. The best model is saved to `/kaggle/working/best_model.pth`.
+Or, in a Kaggle Notebook, run all training cells.
 
-### 5. Evaluate
+- The model trains for the specified number of epochs
+- The best model is saved at: `/kaggle/working/best_model.pth`
+
+### 6. Evaluate the Model
+
+After training, run evaluation:
 
 ```bash
 python test.py
 ```
 
-Computes mean IoU using flip TTA and multi-scale inference.
+Computes Mean IoU using:
 
-### 6. Visualize
+- Flip TTA
+- Multi-scale inference
+
+### 7. Generate Visualizations
+
+Run the visualization script:
 
 ```bash
 python visualize.py
 ```
 
-Results are saved to `/kaggle/working/visualizations/`. Each output image shows:
+Outputs are saved in `/kaggle/working/visualizations/`. Each output contains:
 
 ```
 [ Original | Ground Truth | Prediction | Overlay ]
 ```
 
-To download from Kaggle:
+### 8. Download Results (Kaggle)
+
+To download the results:
 
 ```bash
 cd /kaggle/working
 zip -r results.zip visualizations
 ```
 
----
-
-## 🔍 Inference
-
-```python
-import torch
-
-model.load_state_dict(torch.load("best_model.pth"))
-model.eval()
-```
-
-Inference runs feature extraction, segmentation prediction and mask generation.
+Then download `results.zip` from the Kaggle output panel.
 
 ---
 
-## 💡 Tips
+## Notes
 
-- Enable a **GPU** for much faster training.
-- If DataLoader errors occur on Kaggle, set `num_workers=0`.
-- Use the **same image resolution** for training and testing.
+- Ensure a GPU is enabled for faster training
+- Set `num_workers=0` in the DataLoader if facing issues on Kaggle
+- Use the same image resolution during training and testing
 
 ---
 
-## 🔮 Future Work
+## Future Improvements
 
+- Improve the IoU score further
 - Fine-tune the transformer backbone
-- Stronger segmentation head (e.g., SegFormer-style decoder)
+- Optimize inference speed
+- Extend to real-time applications
+- Multi-scale training
+- Better segmentation head (e.g., SegFormer)
 - Class-balanced loss
-- Multi-scale training and richer augmentation
-- Faster inference toward real-time use
-
----
-
-## 🛠️ Tech Stack
-
-`Python` · `PyTorch` · `torchvision` · `timm` · `OpenCV` · `NumPy` · `Pillow` · `Matplotlib` · `tqdm`
-
----
-
-## 👤 Author
-
-**Kunal Thakur**
-B.Tech Computer Science & Engineering, Delhi Technical Campus, Greater Noida
-
-*AdaptSeg is an individual project, designed, implemented and evaluated by me.*
-
----
-
-## 📄 License
-
-Add your license here (e.g., MIT).
+- Data augmentation improvements
